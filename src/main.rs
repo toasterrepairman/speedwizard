@@ -172,16 +172,61 @@ fn build_ui(app: &AdwApplication) -> Result<(), Box<dyn Error>> {
 
     // Add this after creating the list_box
     list_box.connect_row_activated(|list_box, row| {
-        // Create a new Popover
-        let popover = gtk::Popover::new();
-        popover.set_parent(row);
+        if let Some(box_child) = row.child() {
+            if let Some(h_box) = box_child.downcast_ref::<gtk::Box>() {
+                if let Some(action_row) = h_box.first_child().and_then(|w| w.downcast::<ActionRow>().ok()) {
+                    let title = action_row.title().to_string();
 
-        // Create a simple label for the Popover
-        let label = gtk::Label::new(Some("Details"));
-        popover.set_child(Some(&label));
+                    // Create a new Popover
+                    let popover = gtk::Popover::new();
+                    popover.set_parent(row);
 
-        // Show the Popover
-        popover.popup();
+                    // Create the main container for the popover
+                    let popover_box = gtk::Box::builder()
+                        .orientation(Orientation::Vertical)
+                        .spacing(12)
+                        .margin_start(12)
+                        .margin_end(12)
+                        .margin_top(12)
+                        .margin_bottom(12)
+                        .width_request(300)  // Set a fixed width for the popover
+                        .build();
+
+                    // Add difficulty rating at the top
+                    if let Some(info) = data::PLANET_INFO.get(&title) {
+                        let difficulty_label = gtk::Label::builder()
+                            .label(&format!("Difficulty: {}", info.difficulty))
+                            .halign(gtk::Align::Start)
+                            .build();
+                        difficulty_label.add_css_class("heading");
+                        popover_box.append(&difficulty_label);
+
+                        // Create scrolled window for description
+                        let scrolled_window = gtk::ScrolledWindow::builder()
+                            .hscrollbar_policy(gtk::PolicyType::Never)  // Disable horizontal scrolling
+                            .vscrollbar_policy(gtk::PolicyType::Automatic)
+                            .height_request(150)  // Set a fixed height
+                            .hexpand(true)
+                            .vexpand(true)
+                            .build();
+
+                        // Create label for description
+                        let description_label = gtk::Label::builder()
+                            .label(&info.description)
+                            .wrap(true)
+                            .wrap_mode(gtk::pango::WrapMode::WordChar)
+                            .xalign(0.0)
+                            .build();
+
+                        scrolled_window.set_child(Some(&description_label));
+                        popover_box.append(&scrolled_window);
+                    }
+
+                    popover.set_child(Some(&popover_box));
+                    popover.popup();
+                }
+            }
+        }
     });
 
     let scrolled = gtk::ScrolledWindow::builder()
