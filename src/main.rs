@@ -123,13 +123,14 @@ fn build_ui(app: &AdwApplication) -> Result<(), Box<dyn Error>> {
         .build();
 
     let list_box = gtk::ListBox::new();
-    list_box.set_selection_mode(gtk::SelectionMode::None);
+    list_box.set_selection_mode(gtk::SelectionMode::Single); // Changed from None
     list_box.add_css_class("boxed-list");
 
     let mut rdr = ReaderBuilder::new().from_reader(data::CSV_DATA.as_bytes());
     let mut records: Vec<Record> = rdr.deserialize().filter_map(Result::ok).collect();
 
     records.sort_by(|a, b| a.system.to_lowercase().cmp(&b.system.to_lowercase()));
+
 
     for record in records {
         let title = &record.name;
@@ -139,7 +140,6 @@ fn build_ui(app: &AdwApplication) -> Result<(), Box<dyn Error>> {
         let pressure = record.atmospheric_pressure.trim_end_matches(" atms")
             .parse::<f64>().unwrap_or(0.0);
 
-        // Create the horizontal box to hold both the row and gauge
         let h_box = gtk::Box::builder()
             .orientation(Orientation::Horizontal)
             .spacing(6)
@@ -150,29 +150,39 @@ fn build_ui(app: &AdwApplication) -> Result<(), Box<dyn Error>> {
             .focusable(true)
             .build();
 
-        // Create the row with title and subtitle
         let row = ActionRow::builder()
             .title(title)
             .subtitle(&subtitle)
             .hexpand(false)
-            .width_request(0)  // Set minimum width to 150 pixels
+            .width_request(0)
             .build();
 
-        // Create pressure gauge widget
         let gauge = create_pressure_gauge(pressure);
 
-        // Add both to the horizontal box
         h_box.append(&row);
         h_box.append(&gauge);
 
-        // Create a list box row to contain our horizontal box
         let list_row = gtk::ListBoxRow::new();
         list_row.set_child(Some(&h_box));
-        list_row.set_activatable(false);
-        list_row.set_selectable(false);
+        list_row.set_activatable(true);  // Changed from false
+        // Remove the line that sets selectable to false
 
         list_box.append(&list_row);
     }
+
+    // Add this after creating the list_box
+    list_box.connect_row_activated(|list_box, row| {
+        // Create a new Popover
+        let popover = gtk::Popover::new();
+        popover.set_parent(row);
+
+        // Create a simple label for the Popover
+        let label = gtk::Label::new(Some("Details"));
+        popover.set_child(Some(&label));
+
+        // Show the Popover
+        popover.popup();
+    });
 
     let scrolled = gtk::ScrolledWindow::builder()
         .child(&list_box)
