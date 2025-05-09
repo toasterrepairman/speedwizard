@@ -1,0 +1,21 @@
+[Desktop Entry]
+##  The name of the application ##
+Name=Speedwizard
+GenericName=Libadwaita Star Citizen atmosphere reference
+
+## A comment which act as a tooltip ##
+Comment=Reference Star Citizen's planetary atmospheres to plan lowflying sessions
+
+## The executable of the application with optional args ##
+## You can state full path too ##
+Exec=speedwizard
+
+## State the name of the icon that will be used to display this entry ##
+## Icon=icon-speedwizard
+
+## Is it a terminal app? For example htop will be set as Terminal=True ##
+## Then default terminal app will be used to open the 'htop' ##
+Terminal=false
+
+##  The type as listed  ##
+Type=Application
