@@ -5,7 +5,9 @@ use adw::{Application as AdwApplication, ApplicationWindow, ActionRow};
 use std::fs::File;
 use std::error::Error;
 use serde::Deserialize;
-use csv::Reader;
+use csv::ReaderBuilder;
+
+mod data;
 
 #[derive(Debug, Deserialize)]
 struct Record {
@@ -31,9 +33,7 @@ fn build_ui(app: &AdwApplication) -> Result<(), Box<dyn Error>> {
     let list_box = gtk::ListBox::new();
     list_box.set_selection_mode(gtk::SelectionMode::None);
 
-    // Load and sort CSV
-    let file = File::open("planetary_atmospheres_normalized.csv")?;
-    let mut rdr = Reader::from_reader(file);
+    let mut rdr = ReaderBuilder::new().from_reader(data::CSV_DATA.as_bytes());
     let mut records: Vec<Record> = rdr.deserialize().filter_map(Result::ok).collect();
 
     records.sort_by(|a, b| a.system.to_lowercase().cmp(&b.system.to_lowercase()));
