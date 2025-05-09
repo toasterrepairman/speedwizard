@@ -70,7 +70,7 @@ lazy_static! {
 
         m.insert("Crusader".to_string(), PlanetInfo {
             description: "Crusader is a low mass gas giant in the Stanton system. Rare among gas giants, Crusader's upper atmosphere is breathable by Humans and supports an active indigenous biosphere. The company settled Crusader via a complex network of floating platforms.".to_string(),
-            difficulty: "🟦".to_string(),
+            difficulty: "N/A - No Surface".to_string(),
         });
 
         m.insert("Cellin".to_string(), PlanetInfo {
