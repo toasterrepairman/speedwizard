@@ -9,6 +9,8 @@ use std::fs::File;
 use std::error::Error;
 use serde::Deserialize;
 use csv::ReaderBuilder;
+use gtk::{DrawingArea, CssProvider, StyleContext, STYLE_PROVIDER_PRIORITY_APPLICATION};
+use glib::clone;
 
 mod data;
 
@@ -20,11 +22,98 @@ struct Record {
     atmospheric_pressure: String,
 }
 
+fn create_pressure_gauge(pressure: f64) -> gtk::Box {
+    let box_container = gtk::Box::builder()
+        .orientation(Orientation::Vertical)
+        .vexpand(true)
+        .hexpand(true)
+        .build();
+
+    let drawing_area = DrawingArea::builder()
+        .content_width(120)
+        .content_height(16)
+        .vexpand(true)
+        .hexpand(true)
+        .halign(gtk::Align::Fill)
+        .build();
+
+    // Calculate color based on pressure (0-3 atms)
+    // Normalize pressure to 0-1 range for color calculation
+    let max_pressure = 3.0;
+    let normalized_pressure = (pressure / max_pressure).min(1.0).max(0.0);
+
+    drawing_area.set_draw_func(move |_, cr, width, height| {
+        // Make the bar thinner
+        let bar_height = height as f64 * 0.5; // Thinner bar (50% of container height)
+        let y_offset = (height as f64 - bar_height) / 2.0; // Center vertically
+
+        // Set transparent background
+        cr.set_operator(gtk::cairo::Operator::Clear);
+        cr.paint().expect("Invalid cairo surface state");
+        cr.set_operator(gtk::cairo::Operator::Over);
+
+        // Calculate fill width based on pressure
+        let fill_width = width as f64 * (pressure / max_pressure).min(1.0);
+
+        // Set solid color based on pressure value
+        if normalized_pressure < 0.33 {
+            // Low pressure - Blue
+            cr.set_source_rgb(0.0, 0.4, 0.8);
+        } else if normalized_pressure < 0.66 {
+            // Medium pressure - Green
+            cr.set_source_rgb(0.0, 0.8, 0.2);
+        } else {
+            // High pressure - Red
+            cr.set_source_rgb(0.9, 0.2, 0.1);
+        }
+
+        // Draw rounded rectangle for the fill
+        let radius = bar_height / 2.0;
+        let x = 0.0;
+        let y = y_offset;
+        let w = fill_width;
+        let h = bar_height;
+
+        if w > radius * 2.0 {
+            // Only use rounded corners if we have enough width
+            cr.new_sub_path();
+            cr.arc(x + w - radius, y + radius, radius, -90.0 * std::f64::consts::PI / 180.0, 90.0 * std::f64::consts::PI / 180.0);
+            cr.arc(x + w - radius, y + h - radius, radius, 0.0, 90.0 * std::f64::consts::PI / 180.0);
+            cr.line_to(x + radius, y + h);
+            cr.arc(x + radius, y + h - radius, radius, 90.0 * std::f64::consts::PI / 180.0, 180.0 * std::f64::consts::PI / 180.0);
+            cr.arc(x + radius, y + radius, radius, 180.0 * std::f64::consts::PI / 180.0, 270.0 * std::f64::consts::PI / 180.0);
+            cr.close_path();
+        } else if w > 0.0 {
+            // Very small width, just use a simple rectangle
+            cr.rectangle(x, y, w, h);
+        }
+
+        cr.fill().expect("Invalid cairo surface state");
+
+        // Set background for the full bar with rounded corners (transparent)
+        cr.set_source_rgba(0.8, 0.8, 0.8, 0.2);  // Very light gray with transparency
+        cr.set_line_width(1.0);
+
+        cr.new_sub_path();
+        cr.arc(x + width as f64 - radius, y + radius, radius, -90.0 * std::f64::consts::PI / 180.0, 90.0 * std::f64::consts::PI / 180.0);
+        cr.arc(x + width as f64 - radius, y + h - radius, radius, 0.0, 90.0 * std::f64::consts::PI / 180.0);
+        cr.line_to(x + radius, y + h);
+        cr.arc(x + radius, y + h - radius, radius, 90.0 * std::f64::consts::PI / 180.0, 180.0 * std::f64::consts::PI / 180.0);
+        cr.arc(x + radius, y + radius, radius, 180.0 * std::f64::consts::PI / 180.0, 270.0 * std::f64::consts::PI / 180.0);
+        cr.close_path();
+
+        cr.stroke().expect("Invalid cairo surface state");
+    });
+
+    box_container.append(&drawing_area);
+    box_container
+}
+
 fn build_ui(app: &AdwApplication) -> Result<(), Box<dyn Error>> {
     let window = ApplicationWindow::builder()
         .application(app)
         .title("Speedwizard")
-        .default_width(400)
+        .default_width(600)  // Increased width to accommodate gauge
         .default_height(600)
         .build();
 
@@ -35,6 +124,7 @@ fn build_ui(app: &AdwApplication) -> Result<(), Box<dyn Error>> {
 
     let list_box = gtk::ListBox::new();
     list_box.set_selection_mode(gtk::SelectionMode::None);
+    list_box.add_css_class("boxed-list");
 
     let mut rdr = ReaderBuilder::new().from_reader(data::CSV_DATA.as_bytes());
     let mut records: Vec<Record> = rdr.deserialize().filter_map(Result::ok).collect();
@@ -45,12 +135,42 @@ fn build_ui(app: &AdwApplication) -> Result<(), Box<dyn Error>> {
         let title = &record.name;
         let subtitle = format!("{} ({}) – {} atms", record.system, record.object_class, record.atmospheric_pressure);
 
+        // Parse the atmospheric pressure
+        let pressure = record.atmospheric_pressure.trim_end_matches(" atms")
+            .parse::<f64>().unwrap_or(0.0);
+
+        // Create the horizontal box to hold both the row and gauge
+        let h_box = gtk::Box::builder()
+            .orientation(Orientation::Horizontal)
+            .spacing(12)
+            .margin_start(12)
+            .margin_end(12)
+            .margin_top(6)
+            .margin_bottom(6)
+            .build();
+
+        // Create the row with title and subtitle
         let row = ActionRow::builder()
             .title(title)
             .subtitle(&subtitle)
+            .hexpand(false)
+            .width_request(0)  // Let it determine its own minimum width
             .build();
 
-        list_box.append(&row);
+        // Create pressure gauge widget
+        let gauge = create_pressure_gauge(pressure);
+
+        // Add both to the horizontal box
+        h_box.append(&row);
+        h_box.append(&gauge);
+
+        // Create a list box row to contain our horizontal box
+        let list_row = gtk::ListBoxRow::new();
+        list_row.set_child(Some(&h_box));
+        list_row.set_activatable(false);
+        list_row.set_selectable(false);
+
+        list_box.append(&list_row);
     }
 
     let scrolled = gtk::ScrolledWindow::builder()
