@@ -1,5 +1,8 @@
+use gtk4::prelude::*;
 use adw::prelude::*;
+use adw::{glib, gio};  // Import glib through gtk4
 use gtk4 as gtk;
+use gio::SimpleAction;
 use gtk::{Orientation, HeaderBar};
 use adw::{Application as AdwApplication, ApplicationWindow, ActionRow};
 use std::fs::File;
