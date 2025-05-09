@@ -40,7 +40,7 @@ fn build_ui(app: &AdwApplication) -> Result<(), Box<dyn Error>> {
 
     for record in records {
         let title = &record.name;
-        let subtitle = format!("{} ({}) – {}", record.system, record.object_class, record.atmospheric_pressure);
+        let subtitle = format!("{} ({}) – {} atms", record.system, record.object_class, record.atmospheric_pressure);
 
         let row = ActionRow::builder()
             .title(title)
