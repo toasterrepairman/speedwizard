@@ -32,7 +32,7 @@ fn build_ui(app: &AdwApplication) -> Result<(), Box<dyn Error>> {
     list_box.set_selection_mode(gtk::SelectionMode::None);
 
     // Load and sort CSV
-    let file = File::open("~/.local/share/speedwizard/planetary_atmospheres_normalized.csv")?;
+    let file = File::open("planetary_atmospheres_normalized.csv")?;
     let mut rdr = Reader::from_reader(file);
     let mut records: Vec<Record> = rdr.deserialize().filter_map(Result::ok).collect();
 
@@ -70,7 +70,7 @@ fn build_ui(app: &AdwApplication) -> Result<(), Box<dyn Error>> {
 
 fn main() -> Result<(), Box<dyn Error>> {
     let app = AdwApplication::builder()
-        .application_id("com.toast.speedwizard")
+        .application_id("com.example.Speedwizard")
         .build();
 
     app.connect_activate(|app| {
