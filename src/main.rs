@@ -241,6 +241,15 @@ fn build_ui(app: &AdwApplication) -> Result<(), Box<dyn Error>> {
 
     content.append(&header);
     content.append(&scrolled);
+
+    let quit_action = SimpleAction::new("quit", None);
+    quit_action.connect_activate(glib::clone!(@weak window => move |_, _| {
+        window.close();
+    }));
+    window.add_action(&quit_action);
+
+    app.set_accels_for_action("win.quit", &["<Control>q"]);
+
     window.set_content(Some(&content));
     window.show();
 
