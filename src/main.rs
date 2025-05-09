@@ -44,7 +44,7 @@ fn create_pressure_gauge(pressure: f64) -> gtk::Box {
 
     drawing_area.set_draw_func(move |_, cr, width, height| {
         // Make the bar thinner
-        let bar_height = height as f64 * 0.5; // Thinner bar (50% of container height)
+        let bar_height = height as f64 * 0.25; // Thinner bar (50% of container height)
         let y_offset = (height as f64 - bar_height) / 2.0; // Center vertically
 
         // Set transparent background
