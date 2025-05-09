@@ -55,27 +55,36 @@ fn create_pressure_gauge(pressure: f64) -> gtk::Box {
         // Calculate fill width based on pressure
         let fill_width = width as f64 * (pressure / max_pressure).min(1.0);
 
-        // Set solid color based on pressure value
-        if normalized_pressure < 0.33 {
-            // Low pressure - Blue
-            cr.set_source_rgb(0.0, 0.4, 0.8);
-        } else if normalized_pressure < 0.66 {
-            // Medium pressure - Green
-            cr.set_source_rgb(0.0, 0.8, 0.2);
-        } else {
-            // High pressure - Red
-            cr.set_source_rgb(0.9, 0.2, 0.1);
-        }
-
-        // Draw rounded rectangle for the fill
+        // Draw the background track with rounded corners
         let radius = bar_height / 2.0;
         let x = 0.0;
         let y = y_offset;
-        let w = fill_width;
+        let w = width as f64;
         let h = bar_height;
 
-        if w > radius * 2.0 {
-            // Only use rounded corners if we have enough width
+        // Background track (very subtle)
+        cr.new_sub_path();
+        cr.arc(x + w - radius, y + radius, radius, -90.0 * std::f64::consts::PI / 180.0, 90.0 * std::f64::consts::PI / 180.0);
+        cr.arc(x + w - radius, y + h - radius, radius, 0.0, 90.0 * std::f64::consts::PI / 180.0);
+        cr.line_to(x + radius, y + h);
+        cr.arc(x + radius, y + h - radius, radius, 90.0 * std::f64::consts::PI / 180.0, 180.0 * std::f64::consts::PI / 180.0);
+        cr.arc(x + radius, y + radius, radius, 180.0 * std::f64::consts::PI / 180.0, 270.0 * std::f64::consts::PI / 180.0);
+        cr.close_path();
+
+        cr.set_source_rgba(0.8, 0.8, 0.8, 0.2);
+        cr.fill().expect("Invalid cairo surface state");
+
+        // Only draw fill if we have some pressure
+        if fill_width > 0.0 {
+            // Calculate color based on normalized pressure - simple blue to red gradient
+            let red = normalized_pressure;
+            let blue = 1.0 - normalized_pressure;
+            cr.set_source_rgb(red, 0.0, blue);
+
+            // Create a clipping path with rounded corners for the fill area
+            cr.save();
+
+            // Same rounded rectangle path as background
             cr.new_sub_path();
             cr.arc(x + w - radius, y + radius, radius, -90.0 * std::f64::consts::PI / 180.0, 90.0 * std::f64::consts::PI / 180.0);
             cr.arc(x + w - radius, y + h - radius, radius, 0.0, 90.0 * std::f64::consts::PI / 180.0);
@@ -83,26 +92,16 @@ fn create_pressure_gauge(pressure: f64) -> gtk::Box {
             cr.arc(x + radius, y + h - radius, radius, 90.0 * std::f64::consts::PI / 180.0, 180.0 * std::f64::consts::PI / 180.0);
             cr.arc(x + radius, y + radius, radius, 180.0 * std::f64::consts::PI / 180.0, 270.0 * std::f64::consts::PI / 180.0);
             cr.close_path();
-        } else if w > 0.0 {
-            // Very small width, just use a simple rectangle
-            cr.rectangle(x, y, w, h);
+
+            // Create the clip path
+            cr.clip();
+
+            // Draw the fill rectangle (will be clipped by the rounded corners)
+            cr.rectangle(x, y, fill_width, h);
+            cr.fill().expect("Invalid cairo surface state");
+
+            cr.restore();
         }
-
-        cr.fill().expect("Invalid cairo surface state");
-
-        // Set background for the full bar with rounded corners (transparent)
-        cr.set_source_rgba(0.8, 0.8, 0.8, 0.2);  // Very light gray with transparency
-        cr.set_line_width(1.0);
-
-        cr.new_sub_path();
-        cr.arc(x + width as f64 - radius, y + radius, radius, -90.0 * std::f64::consts::PI / 180.0, 90.0 * std::f64::consts::PI / 180.0);
-        cr.arc(x + width as f64 - radius, y + h - radius, radius, 0.0, 90.0 * std::f64::consts::PI / 180.0);
-        cr.line_to(x + radius, y + h);
-        cr.arc(x + radius, y + h - radius, radius, 90.0 * std::f64::consts::PI / 180.0, 180.0 * std::f64::consts::PI / 180.0);
-        cr.arc(x + radius, y + radius, radius, 180.0 * std::f64::consts::PI / 180.0, 270.0 * std::f64::consts::PI / 180.0);
-        cr.close_path();
-
-        cr.stroke().expect("Invalid cairo surface state");
     });
 
     box_container.append(&drawing_area);
