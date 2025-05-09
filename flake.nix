@@ -65,7 +65,7 @@
             # for desktop files
             install -Dt $out/share/applications resources/speedwizard.desktop
 
-            install -Dt ~/.local/share/speedwizard planetary_atmospheres_normalized.csv
+            cp ~/.local/share/speedwizard planetary_atmospheres_normalized.csv
 
             # install -Dt $out/share/icons resources/icon-speedwizard.png
         '';
