@@ -44,7 +44,7 @@ fn create_pressure_gauge(pressure: f64) -> gtk::Box {
 
     drawing_area.set_draw_func(move |_, cr, width, height| {
         // Make the bar thinner
-        let bar_height = height as f64 * 0.25; // Thinner bar (50% of container height)
+        let bar_height = height as f64 * 0.35; // Thinner bar (50% of container height)
         let y_offset = (height as f64 - bar_height) / 2.0; // Center vertically
 
         // Set transparent background
@@ -76,10 +76,11 @@ fn create_pressure_gauge(pressure: f64) -> gtk::Box {
 
         // Only draw fill if we have some pressure
         if fill_width > 0.0 {
-            // Calculate color based on normalized pressure - simple blue to red gradient
-            let red = normalized_pressure;
-            let blue = 1.0 - normalized_pressure;
-            cr.set_source_rgb(red, 0.0, blue);
+            // Calculate color based on normalized pressure - desaturated blue to red gradient
+            let red = 0.4 + (normalized_pressure * 0.5);  // 0.4-0.9 range
+            let green = 0.4 - (normalized_pressure * 0.2); // 0.4-0.2 range
+            let blue = 0.8 - (normalized_pressure * 0.5);  // 0.7-0.2 range
+            cr.set_source_rgb(red, green, blue);
 
             // Create a clipping path with rounded corners for the fill area
             cr.save();
@@ -141,11 +142,12 @@ fn build_ui(app: &AdwApplication) -> Result<(), Box<dyn Error>> {
         // Create the horizontal box to hold both the row and gauge
         let h_box = gtk::Box::builder()
             .orientation(Orientation::Horizontal)
-            .spacing(12)
-            .margin_start(12)
+            .spacing(6)
+            .margin_start(0)
             .margin_end(12)
             .margin_top(6)
             .margin_bottom(6)
+            .focusable(true)
             .build();
 
         // Create the row with title and subtitle
@@ -153,7 +155,7 @@ fn build_ui(app: &AdwApplication) -> Result<(), Box<dyn Error>> {
             .title(title)
             .subtitle(&subtitle)
             .hexpand(false)
-            .width_request(0)  // Let it determine its own minimum width
+            .width_request(0)  // Set minimum width to 150 pixels
             .build();
 
         // Create pressure gauge widget
