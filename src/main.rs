@@ -1,20 +1,19 @@
 use gtk4::prelude::*;
 use adw::prelude::*;
-use adw::{glib, gio};  // Import glib through gtk4
+use adw::{glib, gio};
 use gtk4 as gtk;
-use gio::SimpleAction;
-use gtk::{Orientation, HeaderBar};
-use adw::{Application as AdwApplication, ApplicationWindow, ActionRow};
-use std::fs::File;
+use gtk::{Orientation, HeaderBar, SearchBar, SearchEntry, ToggleButton};
+use adw::{Application as AdwApplication, ApplicationWindow, ActionRow, ExpanderRow};
+
 use std::error::Error;
 use serde::Deserialize;
 use csv::ReaderBuilder;
-use gtk::{DrawingArea, CssProvider, StyleContext, STYLE_PROVIDER_PRIORITY_APPLICATION};
+use gtk::DrawingArea;
 use glib::clone;
 
 mod data;
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 struct Record {
     system: String,
     name: String,
@@ -22,47 +21,46 @@ struct Record {
     atmospheric_pressure: String,
 }
 
+#[derive(Debug, Clone)]
+struct PlanetaryBody {
+    record: Record,
+    pressure: f64,
+}
+
 fn create_pressure_gauge(pressure: f64) -> gtk::Box {
     let box_container = gtk::Box::builder()
         .orientation(Orientation::Vertical)
         .vexpand(true)
-        .hexpand(true)
+        .hexpand(false)
         .build();
 
     let drawing_area = DrawingArea::builder()
         .content_width(120)
         .content_height(16)
         .vexpand(true)
-        .hexpand(true)
-        .halign(gtk::Align::Fill)
+        .hexpand(false)
+        .halign(gtk::Align::End)
         .build();
 
-    // Calculate color based on pressure (0-3 atms)
-    // Normalize pressure to 0-1 range for color calculation
     let max_pressure = 3.0;
     let normalized_pressure = (pressure / max_pressure).min(1.0).max(0.0);
 
     drawing_area.set_draw_func(move |_, cr, width, height| {
-        // Make the bar thinner
-        let bar_height = height as f64 * 0.35; // Thinner bar (50% of container height)
-        let y_offset = (height as f64 - bar_height) / 2.0; // Center vertically
+        let bar_height = height as f64 * 0.35;
+        let y_offset = (height as f64 - bar_height) / 2.0;
 
-        // Set transparent background
         cr.set_operator(gtk::cairo::Operator::Clear);
         cr.paint().expect("Invalid cairo surface state");
         cr.set_operator(gtk::cairo::Operator::Over);
 
-        // Calculate fill width based on pressure
         let fill_width = width as f64 * (pressure / max_pressure).min(1.0);
 
-        // Draw the background track with rounded corners
         let radius = bar_height / 2.0;
         let x = 0.0;
         let y = y_offset;
         let w = width as f64;
         let h = bar_height;
 
-        // Background track (very subtle)
         cr.new_sub_path();
         cr.arc(x + w - radius, y + radius, radius, -90.0 * std::f64::consts::PI / 180.0, 90.0 * std::f64::consts::PI / 180.0);
         cr.arc(x + w - radius, y + h - radius, radius, 0.0, 90.0 * std::f64::consts::PI / 180.0);
@@ -74,18 +72,14 @@ fn create_pressure_gauge(pressure: f64) -> gtk::Box {
         cr.set_source_rgba(0.8, 0.8, 0.8, 0.2);
         cr.fill().expect("Invalid cairo surface state");
 
-        // Only draw fill if we have some pressure
         if fill_width > 0.0 {
-            // Calculate color based on normalized pressure - desaturated blue to red gradient
-            let red = 0.4 + (normalized_pressure * 0.5);  // 0.4-0.9 range
-            let green = 0.4 - (normalized_pressure * 0.2); // 0.4-0.2 range
-            let blue = 0.8 - (normalized_pressure * 0.5);  // 0.7-0.2 range
+            let red = 0.4 + (normalized_pressure * 0.5);
+            let green = 0.4 - (normalized_pressure * 0.2);
+            let blue = 0.8 - (normalized_pressure * 0.5);
             cr.set_source_rgb(red, green, blue);
 
-            // Create a clipping path with rounded corners for the fill area
             cr.save();
 
-            // Same rounded rectangle path as background
             cr.new_sub_path();
             cr.arc(x + w - radius, y + radius, radius, -90.0 * std::f64::consts::PI / 180.0, 90.0 * std::f64::consts::PI / 180.0);
             cr.arc(x + w - radius, y + h - radius, radius, 0.0, 90.0 * std::f64::consts::PI / 180.0);
@@ -94,10 +88,8 @@ fn create_pressure_gauge(pressure: f64) -> gtk::Box {
             cr.arc(x + radius, y + radius, radius, 180.0 * std::f64::consts::PI / 180.0, 270.0 * std::f64::consts::PI / 180.0);
             cr.close_path();
 
-            // Create the clip path
             cr.clip();
 
-            // Draw the fill rectangle (will be clipped by the rounded corners)
             cr.rectangle(x, y, fill_width, h);
             cr.fill().expect("Invalid cairo surface state");
 
@@ -113,7 +105,7 @@ fn build_ui(app: &AdwApplication) -> Result<(), Box<dyn Error>> {
     let window = ApplicationWindow::builder()
         .application(app)
         .title("Speedwizard")
-        .default_width(600)  // Increased width to accommodate gauge
+        .default_width(600)
         .default_height(600)
         .build();
 
@@ -122,112 +114,223 @@ fn build_ui(app: &AdwApplication) -> Result<(), Box<dyn Error>> {
         .css_classes(["flat"])
         .build();
 
+    let search_entry = SearchEntry::new();
+    let search_bar = SearchBar::builder()
+        .search_mode_enabled(false)
+        .child(&search_entry)
+        .build();
+
+    let search_button = ToggleButton::builder()
+        .icon_name("system-search-symbolic")
+        .tooltip_text("Search (Ctrl+F)")
+        .build();
+
+    let title_label = gtk::Label::new(Some("Speedwizard"));
+    title_label.add_css_class("title");
+    header.pack_start(&search_button);
+    header.set_title_widget(Some(&title_label));
+
     let list_box = gtk::ListBox::new();
-    list_box.set_selection_mode(gtk::SelectionMode::Single); // Changed from None
+    list_box.set_selection_mode(gtk::SelectionMode::Single);
     list_box.add_css_class("boxed-list");
 
     let mut rdr = ReaderBuilder::new().from_reader(data::CSV_DATA.as_bytes());
     let mut records: Vec<Record> = rdr.deserialize().filter_map(Result::ok).collect();
 
-    records.sort_by(|a, b| a.system.to_lowercase().cmp(&b.system.to_lowercase()));
+    records.sort_by(|a, b| {
+        let system_cmp = a.system.to_lowercase().cmp(&b.system.to_lowercase());
+        if system_cmp != std::cmp::Ordering::Equal {
+            return system_cmp;
+        }
+        let class_order = |r: &Record| match r.object_class.as_str() {
+            "Planet" => 0,
+            "Protoplanet" => 1,
+            "Moon" => 2,
+            _ => 3,
+        };
+        class_order(a).cmp(&class_order(b))
+    });
 
+    let mut systems: std::collections::HashMap<String, Vec<PlanetaryBody>> = std::collections::HashMap::new();
 
     for record in records {
-        let title = &record.name;
-        let subtitle = format!("{} ({}) – {} atms", record.system, record.object_class, record.atmospheric_pressure);
-
-        // Parse the atmospheric pressure
         let pressure = record.atmospheric_pressure.trim_end_matches(" atms")
             .parse::<f64>().unwrap_or(0.0);
-
-        let h_box = gtk::Box::builder()
-            .orientation(Orientation::Horizontal)
-            .spacing(6)
-            .margin_start(0)
-            .margin_end(12)
-            .margin_top(6)
-            .margin_bottom(6)
-            .focusable(true)
-            .build();
-
-        let row = ActionRow::builder()
-            .title(title)
-            .subtitle(&subtitle)
-            .hexpand(false)
-            .width_request(0)
-            .build();
-
-        let gauge = create_pressure_gauge(pressure);
-
-        h_box.append(&row);
-        h_box.append(&gauge);
-
-        let list_row = gtk::ListBoxRow::new();
-        list_row.set_child(Some(&h_box));
-        list_row.set_activatable(true);  // Changed from false
-        // Remove the line that sets selectable to false
-
-        list_box.append(&list_row);
+        systems.entry(record.system.clone())
+            .or_insert_with(Vec::new)
+            .push(PlanetaryBody { record, pressure });
     }
 
-    // Add this after creating the list_box
-    list_box.connect_row_activated(|list_box, row| {
-        if let Some(box_child) = row.child() {
-            if let Some(h_box) = box_child.downcast_ref::<gtk::Box>() {
-                if let Some(action_row) = h_box.first_child().and_then(|w| w.downcast::<ActionRow>().ok()) {
-                    let title = action_row.title().to_string();
+    let mut system_names: Vec<String> = systems.keys().cloned().collect();
+    system_names.sort_by(|a, b| a.to_lowercase().cmp(&b.to_lowercase()));
 
-                    // Create a new Popover
-                    let popover = gtk::Popover::new();
-                    popover.set_parent(row);
+    let mut all_rows: Vec<gtk::ListBoxRow> = Vec::new();
 
-                    // Create the main container for the popover
-                    let popover_box = gtk::Box::builder()
-                        .orientation(Orientation::Vertical)
-                        .spacing(12)
-                        .margin_start(12)
+    for system_name in system_names {
+        let bodies = systems.get(&system_name).unwrap();
+
+        let expander_row = ExpanderRow::builder()
+            .title(&system_name)
+            .expanded(true)
+            .selectable(false)
+            .build();
+
+        let mut planet_moons: std::collections::HashMap<String, Vec<PlanetaryBody>> = std::collections::HashMap::new();
+        let mut current_planet: Option<String> = None;
+
+        for body in bodies {
+            match body.record.object_class.as_str() {
+                "Planet" | "Protoplanet" => {
+                    current_planet = Some(body.record.name.clone());
+                    planet_moons.entry(body.record.name.clone())
+                        .or_insert_with(Vec::new)
+                        .push(body.clone());
+                }
+                "Moon" => {
+                    if let Some(ref planet) = current_planet {
+                        planet_moons.entry(planet.clone())
+                            .or_insert_with(Vec::new)
+                            .push(body.clone());
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        let planet_names: Vec<String> = planet_moons.keys().cloned().collect();
+        for planet_name in &planet_names {
+            if let Some(bodies) = planet_moons.get(planet_name) {
+                for body in bodies {
+                    let is_moon = body.record.object_class == "Moon";
+                    let is_planet = body.record.object_class == "Planet";
+                    let title = &body.record.name;
+
+                    let is_breathable = is_planet && body.pressure >= 0.8 && body.pressure <= 1.2;
+                    let title_with_indicator = if is_breathable {
+                        format!("{} 🌬️", title)
+                    } else {
+                        title.to_string()
+                    };
+
+                    let subtitle = if is_moon {
+                        format!("Moon of {} – {} atms", planet_name, body.record.atmospheric_pressure)
+                    } else {
+                        format!("{} ({}) – {} atms", body.record.system, body.record.object_class, body.record.atmospheric_pressure)
+                    };
+
+                    let h_box = gtk::Box::builder()
+                        .orientation(Orientation::Horizontal)
+                        .spacing(6)
+                        .margin_start(0)
                         .margin_end(12)
-                        .margin_top(12)
-                        .margin_bottom(12)
-                        .width_request(300)  // Set a fixed width for the popover
+                        .margin_top(6)
+                        .margin_bottom(6)
+                        .focusable(true)
                         .build();
 
-                    // Add difficulty rating at the top
-                    if let Some(info) = data::PLANET_INFO.get(&title) {
-                        let difficulty_label = gtk::Label::builder()
-                            .label(&format!("Difficulty: {}", info.difficulty))
-                            .halign(gtk::Align::Start)
+                    let row = ActionRow::builder()
+                        .title(&title_with_indicator)
+                        .subtitle(&subtitle)
+                        .hexpand(true)
+                        .build();
+
+                    let gauge = create_pressure_gauge(body.pressure);
+
+                    h_box.append(&row);
+                    h_box.append(&gauge);
+
+                    let list_row = gtk::ListBoxRow::new();
+                    list_row.set_child(Some(&h_box));
+                    list_row.set_activatable(true);
+                    list_row.set_visible(true);
+
+                    let gesture = gtk::GestureClick::new();
+                    let title_for_popover = body.record.name.clone();
+                    let is_breathable_for_popover = is_breathable;
+                    let list_row_for_popover = list_row.clone();
+                    gesture.connect_pressed(move |_, _, x, y| {
+                        let popover = gtk::Popover::new();
+                        popover.set_parent(&list_row_for_popover);
+
+                        let popover_box = gtk::Box::builder()
+                            .orientation(Orientation::Vertical)
+                            .spacing(12)
+                            .margin_start(12)
+                            .margin_end(12)
+                            .margin_top(12)
+                            .margin_bottom(12)
+                            .width_request(300)
                             .build();
-                        difficulty_label.add_css_class("heading");
-                        popover_box.append(&difficulty_label);
 
-                        // Create scrolled window for description
-                        let scrolled_window = gtk::ScrolledWindow::builder()
-                            .hscrollbar_policy(gtk::PolicyType::Never)  // Disable horizontal scrolling
-                            .vscrollbar_policy(gtk::PolicyType::Automatic)
-                            .height_request(150)  // Set a fixed height
-                            .hexpand(true)
-                            .vexpand(true)
-                            .build();
+                        if let Some(info) = data::PLANET_INFO.get(&title_for_popover) {
+                            let header_box = gtk::Box::builder()
+                                .orientation(Orientation::Horizontal)
+                                .spacing(8)
+                                .build();
 
-                        // Create label for description
-                        let description_label = gtk::Label::builder()
-                            .label(&info.description)
-                            .wrap(true)
-                            .wrap_mode(gtk::pango::WrapMode::WordChar)
-                            .xalign(0.0)
-                            .build();
+                            let difficulty_label = gtk::Label::builder()
+                                .label(&format!("Difficulty: {}", info.difficulty))
+                                .halign(gtk::Align::Start)
+                                .build();
+                            difficulty_label.add_css_class("heading");
+                            header_box.append(&difficulty_label);
 
-                        scrolled_window.set_child(Some(&description_label));
-                        popover_box.append(&scrolled_window);
-                    }
+                            if is_breathable_for_popover {
+                                let breathable_label = gtk::Label::builder()
+                                    .label("(Breathable Atmosphere)")
+                                    .halign(gtk::Align::End)
+                                    .hexpand(true)
+                                    .build();
+                                header_box.append(&breathable_label);
+                            }
 
-                    popover.set_child(Some(&popover_box));
-                    popover.popup();
+                            popover_box.append(&header_box);
+
+                            let scrolled_window = gtk::ScrolledWindow::builder()
+                                .hscrollbar_policy(gtk::PolicyType::Never)
+                                .vscrollbar_policy(gtk::PolicyType::Automatic)
+                                .height_request(150)
+                                .hexpand(true)
+                                .vexpand(true)
+                                .build();
+
+                            let description_label = gtk::Label::builder()
+                                .label(&info.description)
+                                .wrap(true)
+                                .wrap_mode(gtk::pango::WrapMode::WordChar)
+                                .xalign(0.0)
+                                .build();
+
+                            scrolled_window.set_child(Some(&description_label));
+                            popover_box.append(&scrolled_window);
+                        }
+
+                        popover.set_child(Some(&popover_box));
+                        popover.popup();
+                        let _ = x;
+                        let _ = y;
+                    });
+                    list_row.add_controller(gesture);
+
+                    let row_clone = list_row.clone();
+                    let name_for_filter = body.record.name.clone();
+                    let system_for_filter = body.record.system.clone();
+                    search_entry.connect_search_changed(clone!(@weak row_clone => move |entry| {
+                        let search_text = entry.text().to_lowercase();
+                        let name = name_for_filter.to_lowercase();
+                        let system = system_for_filter.to_lowercase();
+                        let visible = search_text.is_empty() || name.contains(&search_text) || system.contains(&search_text);
+                        row_clone.set_visible(visible);
+                    }));
+
+                    expander_row.add_row(&list_row);
+                    all_rows.push(list_row);
                 }
             }
         }
-    });
+
+        list_box.append(&expander_row);
+    }
 
     let scrolled = gtk::ScrolledWindow::builder()
         .child(&list_box)
@@ -240,9 +343,34 @@ fn build_ui(app: &AdwApplication) -> Result<(), Box<dyn Error>> {
         .build();
 
     content.append(&header);
+    content.append(&search_bar);
     content.append(&scrolled);
 
-    let quit_action = SimpleAction::new("quit", None);
+    search_button.connect_toggled(clone!(@weak search_bar, @weak search_entry => move |button| {
+        search_bar.set_search_mode(button.is_active());
+        if button.is_active() {
+            search_entry.grab_focus();
+        }
+    }));
+
+    search_bar.bind_property("search-mode-enabled", &search_button, "active")
+        .flags(glib::BindingFlags::BIDIRECTIONAL)
+        .build();
+
+    app.set_accels_for_action("win.search", &["<Control>f"]);
+
+    let search_action = gio::SimpleAction::new("search", None);
+    search_action.connect_activate(glib::clone!(@weak search_button, @weak search_bar, @weak search_entry => move |_, _| {
+        let is_active = search_button.is_active();
+        search_button.set_active(!is_active);
+        search_bar.set_search_mode(!is_active);
+        if !is_active {
+            search_entry.grab_focus();
+        }
+    }));
+    window.add_action(&search_action);
+
+    let quit_action = gio::SimpleAction::new("quit", None);
     quit_action.connect_activate(glib::clone!(@weak window => move |_, _| {
         window.close();
     }));

@@ -157,7 +157,7 @@ lazy_static! {
 
         m.insert("Adir".to_string(), PlanetInfo {
             description: "Adir is the third moon from the gas giant Pyro V. Jagged mountains and rocky hills dominate its crater-ridden landscape. The air is permeated with fine particles of dust.".to_string(),
-            difficulty: "♦".to_string(),
+            difficulty: "♦️".to_string(),
         });
 
         m.insert("Fairo".to_string(), PlanetInfo {
